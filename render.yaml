@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cbct-export
+    name: cbct-laudo
     env: docker
     plan: free
     region: oregon

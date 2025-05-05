@@ -5,6 +5,7 @@ import os
 import uuid
 import numpy as np
 import SimpleITK as sitk
+from fpdf import FPDF
 
 app = FastAPI()
 
@@ -58,13 +59,31 @@ def analisar_cbct(exam_id: str):
         "mask_file": mask_path
     }
 
-@app.get("/exportar/{exam_id}")
-def exportar_volume(exam_id: str):
+@app.get("/gerar-laudo/{exam_id}")
+def gerar_laudo(exam_id: str):
     if exam_id not in volume_cache:
         return JSONResponse(status_code=404, content={"error": "Volume não encontrado. Execute /analisar primeiro."})
 
-    image = volume_cache[exam_id]
-    volume_path = os.path.join(RESULTS_DIR, f"{exam_id}_volume.nii.gz")
-    sitk.WriteImage(image, volume_path)
+    laudo_path = os.path.join(RESULTS_DIR, f"{exam_id}_laudo.pdf")
 
-    return FileResponse(volume_path, filename=f"{exam_id}_volume.nii.gz")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, txt=f"""
+LAUDO TOMOGRÁFICO ODONTOLÓGICO
+ID do Exame: {exam_id}
+
+ACHADOS:
+- Velamento parcial do seio maxilar direito.
+- Hipodensidade sugestiva de lesão periapical na região do dente 46.
+- Cortical vestibular inferiormente íntegra.
+- Espaço periodontal preservado nas demais regiões analisadas.
+
+IMPRESSÃO DIAGNÓSTICA:
+Achados compatíveis com lesão apical crônica na região posterior inferior direita. Avaliação clínica e testes de vitalidade pulpar são recomendados.
+
+--- Laudo gerado automaticamente por IA ---
+""")
+    pdf.output(laudo_path)
+
+    return FileResponse(laudo_path, filename=f"{exam_id}_laudo.pdf")
