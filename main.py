@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import os
 import uuid
@@ -9,6 +10,15 @@ from fpdf import FPDF
 from ia_infer import run_inference
 
 app = FastAPI()
+
+# ✅ Middleware de CORS habilitado para qualquer origem (ajuste isso em produção)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # em produção troque por ['https://seusite.vercel.app']
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = "cbct_uploads"
 RESULTS_DIR = "cbct_results"
