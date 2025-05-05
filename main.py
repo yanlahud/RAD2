@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from typing import List
 import os
 import uuid
@@ -12,6 +12,8 @@ BASE_DIR = "cbct_uploads"
 RESULTS_DIR = "cbct_results"
 os.makedirs(BASE_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
+
+volume_cache = {}
 
 @app.post("/upload-cbct/")
 async def upload_cbct(files: List[UploadFile] = File(...)):
@@ -42,24 +44,27 @@ def analisar_cbct(exam_id: str):
     image = reader.Execute()
     volume = sitk.GetArrayFromImage(image)
 
-    mask = (volume > np.percentile(volume, 99)).astype(np.uint8)
-    result_path = os.path.join(RESULTS_DIR, f"{exam_id}_mask.npy")
-    np.save(result_path, mask)
+    volume_cache[exam_id] = image
+
+    mask_array = (volume > np.percentile(volume, 99)).astype(np.uint8)
+    mask_image = sitk.GetImageFromArray(mask_array)
+    mask_image.CopyInformation(image)
+    mask_path = os.path.join(RESULTS_DIR, f"{exam_id}_mask.nii.gz")
+    sitk.WriteImage(mask_image, mask_path)
 
     return {
         "exam_id": exam_id,
         "volume_shape": list(volume.shape),
-        "result_file": result_path
+        "mask_file": mask_path
     }
 
-@app.get("/resultado/{exam_id}")
-def resultado_cbct(exam_id: str):
-    result_path = os.path.join(RESULTS_DIR, f"{exam_id}_mask.npy")
-    if not os.path.exists(result_path):
-        return JSONResponse(status_code=404, content={"error": "Resultado não encontrado"})
+@app.get("/exportar/{exam_id}")
+def exportar_volume(exam_id: str):
+    if exam_id not in volume_cache:
+        return JSONResponse(status_code=404, content={"error": "Volume não encontrado. Execute /analisar primeiro."})
 
-    return {
-        "exam_id": exam_id,
-        "mask_preview": "Simulado (real volume)",
-        "shape": list(np.load(result_path).shape)
-    }
+    image = volume_cache[exam_id]
+    volume_path = os.path.join(RESULTS_DIR, f"{exam_id}_volume.nii.gz")
+    sitk.WriteImage(image, volume_path)
+
+    return FileResponse(volume_path, filename=f"{exam_id}_volume.nii.gz")
