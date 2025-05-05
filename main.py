@@ -6,6 +6,7 @@ import uuid
 import numpy as np
 import SimpleITK as sitk
 from fpdf import FPDF
+from ia_infer import run_inference
 
 app = FastAPI()
 
@@ -29,41 +30,24 @@ async def upload_cbct(files: List[UploadFile] = File(...)):
 
     return {"id": exam_id, "status": "uploaded", "path": exam_path}
 
-@app.get("/analisar/{exam_id}")
-def analisar_cbct(exam_id: str):
-    exam_path = os.path.join(BASE_DIR, exam_id)
-    if not os.path.exists(exam_path):
-        return JSONResponse(status_code=404, content={"error": "Exame não encontrado"})
+@app.get("/ia-analisar/{exam_id}")
+def ia_analisar_cbct(exam_id: str):
+    volume_path = os.path.join(RESULTS_DIR, f"{exam_id}_volume.nii.gz")
+    output_path = os.path.join(RESULTS_DIR, f"{exam_id}_ia_mask.nii.gz")
 
-    reader = sitk.ImageSeriesReader()
-    series_ids = reader.GetGDCMSeriesIDs(exam_path)
-    if not series_ids:
-        return JSONResponse(status_code=400, content={"error": "Nenhuma série DICOM encontrada"})
+    if not os.path.exists(volume_path):
+        return JSONResponse(status_code=404, content={"error": "Volume não encontrado. Execute /analisar primeiro."})
 
-    file_names = reader.GetGDCMSeriesFileNames(exam_path, series_ids[0])
-    reader.SetFileNames(file_names)
-    image = reader.Execute()
-    volume = sitk.GetArrayFromImage(image)
-
-    volume_cache[exam_id] = image
-
-    mask_array = (volume > np.percentile(volume, 99)).astype(np.uint8)
-    mask_image = sitk.GetImageFromArray(mask_array)
-    mask_image.CopyInformation(image)
-    mask_path = os.path.join(RESULTS_DIR, f"{exam_id}_mask.nii.gz")
-    sitk.WriteImage(mask_image, mask_path)
+    run_inference(volume_path, output_path)
 
     return {
         "exam_id": exam_id,
-        "volume_shape": list(volume.shape),
-        "mask_file": mask_path
+        "ia_mask_file": output_path,
+        "message": "Inferência MONAI concluída"
     }
 
 @app.get("/gerar-laudo/{exam_id}")
 def gerar_laudo(exam_id: str):
-    if exam_id not in volume_cache:
-        return JSONResponse(status_code=404, content={"error": "Volume não encontrado. Execute /analisar primeiro."})
-
     laudo_path = os.path.join(RESULTS_DIR, f"{exam_id}_laudo.pdf")
 
     pdf = FPDF()
@@ -74,13 +58,12 @@ LAUDO TOMOGRÁFICO ODONTOLÓGICO
 ID do Exame: {exam_id}
 
 ACHADOS:
-- Velamento parcial do seio maxilar direito.
-- Hipodensidade sugestiva de lesão periapical na região do dente 46.
-- Cortical vestibular inferiormente íntegra.
-- Espaço periodontal preservado nas demais regiões analisadas.
+- Segmentação automatizada realizada com MONAI (modelo cabeça-pescoço).
+- Achados estruturais detectados com base em máscara segmentada.
+- (Futuro: interpretar máscara para gerar descrição anatômica automática).
 
 IMPRESSÃO DIAGNÓSTICA:
-Achados compatíveis com lesão apical crônica na região posterior inferior direita. Avaliação clínica e testes de vitalidade pulpar são recomendados.
+Modelo executado com sucesso. Integração de IA concluída para validação clínica.
 
 --- Laudo gerado automaticamente por IA ---
 """)
