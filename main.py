@@ -4,6 +4,7 @@ from typing import List
 import os
 import uuid
 import numpy as np
+import SimpleITK as sitk
 
 app = FastAPI()
 
@@ -31,15 +32,23 @@ def analisar_cbct(exam_id: str):
     if not os.path.exists(exam_path):
         return JSONResponse(status_code=404, content={"error": "Exame não encontrado"})
 
-    volume = np.random.rand(128, 128, 128)
-    mask = (volume > 0.9).astype(np.uint8)
+    reader = sitk.ImageSeriesReader()
+    series_ids = reader.GetGDCMSeriesIDs(exam_path)
+    if not series_ids:
+        return JSONResponse(status_code=400, content={"error": "Nenhuma série DICOM encontrada"})
 
+    file_names = reader.GetGDCMSeriesFileNames(exam_path, series_ids[0])
+    reader.SetFileNames(file_names)
+    image = reader.Execute()
+    volume = sitk.GetArrayFromImage(image)
+
+    mask = (volume > np.percentile(volume, 99)).astype(np.uint8)
     result_path = os.path.join(RESULTS_DIR, f"{exam_id}_mask.npy")
     np.save(result_path, mask)
 
     return {
         "exam_id": exam_id,
-        "message": "Segmentação simulada concluída",
+        "volume_shape": list(volume.shape),
         "result_file": result_path
     }
 
@@ -51,6 +60,6 @@ def resultado_cbct(exam_id: str):
 
     return {
         "exam_id": exam_id,
-        "mask_preview": "Simulado",
+        "mask_preview": "Simulado (real volume)",
         "shape": list(np.load(result_path).shape)
     }

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cbct-mvp
+    name: cbct-real
     env: docker
     plan: free
     region: oregon
