@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cbct-real
+    name: cbct-export
     env: docker
     plan: free
     region: oregon
