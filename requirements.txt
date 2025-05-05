@@ -4,6 +4,6 @@ numpy
 SimpleITK
 fpdf
 python-multipart
-monai==1.3.0.post20240229
+monai==1.2.0
 torch==2.0.1
 nibabel
