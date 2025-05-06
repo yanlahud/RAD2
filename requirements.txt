@@ -1,9 +1,9 @@
 fastapi
-uvicorn[standard]
-numpy
+uvicorn
+pydantic
+python-multipart
 SimpleITK
 fpdf
-python-multipart
-monai==1.2.0
-torch==2.0.1
 nibabel
+numpy
+monai==1.2.0
