@@ -26,9 +26,20 @@ def inferir_cbct(input_folder: str, output_folder: str):
     # Carrega volume DICOM como NIfTI
     import SimpleITK as sitk
     reader = sitk.ImageSeriesReader()
-    dicom_names = reader.GetGDCMSeriesFileNames(dicom_extracted_path)
-    reader.SetFileNames(dicom_names)
+
+    # Novo trecho: busca todos os arquivos .dcm incluindo subpastas
+    dicom_files = []
+    for root, _, files in os.walk(dicom_extracted_path):
+        for file in files:
+            if file.lower().endswith(".dcm"):
+                dicom_files.append(os.path.join(root, file))
+
+    if not dicom_files:
+        raise RuntimeError("Nenhum arquivo DICOM (.dcm) encontrado no .zip enviado.")
+
+    reader.SetFileNames(dicom_files)
     image = reader.Execute()
+
     image_array = sitk.GetArrayFromImage(image)
     affine = np.eye(4)
     nifti_path = os.path.join(output_folder, "volume.nii.gz")
