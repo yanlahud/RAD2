@@ -27,15 +27,19 @@ def inferir_cbct(input_folder: str, output_folder: str):
     import SimpleITK as sitk
     reader = sitk.ImageSeriesReader()
 
-    # Novo trecho: busca todos os arquivos .dcm incluindo subpastas
+    # Filtro para ignorar arquivos ocultos e __MACOSX
     dicom_files = []
     for root, _, files in os.walk(dicom_extracted_path):
         for file in files:
-            if file.lower().endswith(".dcm"):
+            if (
+                file.lower().endswith(".dcm")
+                and not file.startswith("._")
+                and "__macosx" not in root.lower()
+            ):
                 dicom_files.append(os.path.join(root, file))
 
     if not dicom_files:
-        raise RuntimeError("Nenhum arquivo DICOM (.dcm) encontrado no .zip enviado.")
+        raise RuntimeError("Nenhum arquivo DICOM (.dcm) válido encontrado no .zip enviado.")
 
     reader.SetFileNames(dicom_files)
     image = reader.Execute()
