@@ -1,4 +1,3 @@
-
 import os
 
 def inferir_cbct(input_folder: str, output_folder: str):
