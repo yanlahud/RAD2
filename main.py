@@ -1,78 +1,94 @@
+
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from typing import List
-import os
 import uuid
-import numpy as np
-import SimpleITK as sitk
+import os
+import json
+from datetime import datetime
+from ia_infer import inferir_cbct
 from fpdf import FPDF
-from ia_infer import run_inference
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-
-BASE_DIR = "cbct_uploads"
-RESULTS_DIR = "cbct_results"
-os.makedirs(BASE_DIR, exist_ok=True)
-os.makedirs(RESULTS_DIR, exist_ok=True)
-
-# Permitir CORS para o frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.post("/upload-cbct/")
 async def upload_cbct(files: List[UploadFile] = File(...)):
     exam_id = str(uuid.uuid4())
-    exam_path = os.path.join(BASE_DIR, exam_id)
-    os.makedirs(exam_path, exist_ok=True)
+    exam_folder = f"./uploads/{exam_id}"
+    os.makedirs(exam_folder, exist_ok=True)
 
-    # Salva os arquivos DICOM
     for file in files:
-        file_path = os.path.join(exam_path, file.filename)
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
+        file_location = f"{exam_folder}/{file.filename}"
+        with open(file_location, "wb+") as file_object:
+            file_object.write(await file.read())
 
-    # Etapa 1 - Conversão em volume
-    volume_path = os.path.join(RESULTS_DIR, f"{exam_id}_volume.nii.gz")
-    reader = sitk.ImageSeriesReader()
-    dicom_names = reader.GetGDCMSeriesFileNames(exam_path)
-    reader.SetFileNames(dicom_names)
-    image = reader.Execute()
-    sitk.WriteImage(image, volume_path)
-
-    # Etapa 2 - Inferência com MONAI
-    output_path = os.path.join(RESULTS_DIR, f"{exam_id}_ia_mask.nii.gz")
-    run_inference(volume_path, output_path)
-
-    # Etapa 3 - Gerar Laudo
-    laudo_path = os.path.join(RESULTS_DIR, f"{exam_id}_laudo.pdf")
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, txt=f"""LAUDO TOMOGRÁFICO ODONTOLÓGICO
-ID do Exame: {exam_id}
-
-ACHADOS:
-- Segmentação automática com MONAI.
-- Detecção volumétrica aplicada com base na máscara.
-- (Em breve: interpretação anatômica automatizada).
-
-IMPRESSÃO DIAGNÓSTICA:
-Laudo gerado automaticamente por IA.
-""")
-    pdf.output(laudo_path)
-
-    return {
+    # Criar metadados
+    metadata = {
         "exam_id": exam_id,
-        "status": "completo",
-        "laudo_url": f"https://rad2.onrender.com/gerar-laudo/{exam_id}"
+        "data_upload": datetime.now().isoformat(),
+        "arquivos": [file.filename for file in files],
+        "status": "aguardando análise"
     }
+    with open(f"{exam_folder}/metadados.json", "w") as meta_file:
+        json.dump(metadata, meta_file, indent=4)
+
+    return {"exam_id": exam_id}
+
+@app.get("/ia-analisar/{exam_id}")
+def analisar_cbct(exam_id: str):
+    exam_folder = f"./uploads/{exam_id}"
+    output_path = f"./outputs/{exam_id}"
+    os.makedirs(output_path, exist_ok=True)
+
+    result = inferir_cbct(exam_folder, output_path)
+
+    # Atualiza metadados
+    metadata_path = f"{exam_folder}/metadados.json"
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        metadata["status"] = "processado"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=4)
+
+    return {"resultado": result}
 
 @app.get("/gerar-laudo/{exam_id}")
 def gerar_laudo(exam_id: str):
-    laudo_path = os.path.join(RESULTS_DIR, f"{exam_id}_laudo.pdf")
-    return FileResponse(laudo_path, filename=f"{exam_id}_laudo.pdf")
+    output_path = f"./outputs/{exam_id}"
+    laudo_path = f"{output_path}/laudo.pdf"
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Laudo Automático CBCT", ln=True, align="C")
+
+    achados_path = f"{output_path}/achados.txt"
+    if os.path.exists(achados_path):
+        with open(achados_path, "r") as f:
+            for linha in f:
+                pdf.multi_cell(0, 10, linha.strip())
+    else:
+        pdf.multi_cell(0, 10, "Nenhum achado encontrado.")
+
+    pdf.output(laudo_path)
+
+    # Atualiza metadados com status final
+    metadata_path = f"./uploads/{exam_id}/metadados.json"
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        metadata["status"] = "concluído"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=4)
+
+    return FileResponse(laudo_path, media_type='application/pdf', filename="laudo.pdf")
+
+@app.get("/status/{exam_id}")
+def status_exame(exam_id: str):
+    metadata_path = f"./uploads/{exam_id}/metadados.json"
+    if os.path.exists(metadata_path):
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        return JSONResponse(content=metadata)
+    return JSONResponse(content={"erro": "Exame não encontrado"}, status_code=404)
