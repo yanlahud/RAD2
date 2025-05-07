@@ -1,6 +1,6 @@
-
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import uuid
 import os
@@ -10,6 +10,15 @@ from ia_infer import inferir_cbct
 from fpdf import FPDF
 
 app = FastAPI()
+
+# Middleware de CORS para liberar acesso do frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Em produção, substitua pelo domínio do frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/upload-cbct/")
 async def upload_cbct(files: List[UploadFile] = File(...)):
@@ -22,7 +31,6 @@ async def upload_cbct(files: List[UploadFile] = File(...)):
         with open(file_location, "wb+") as file_object:
             file_object.write(await file.read())
 
-    # Criar metadados
     metadata = {
         "exam_id": exam_id,
         "data_upload": datetime.now().isoformat(),
@@ -42,7 +50,6 @@ def analisar_cbct(exam_id: str):
 
     result = inferir_cbct(exam_folder, output_path)
 
-    # Atualiza metadados
     metadata_path = f"{exam_folder}/metadados.json"
     if os.path.exists(metadata_path):
         with open(metadata_path, "r") as f:
@@ -73,7 +80,6 @@ def gerar_laudo(exam_id: str):
 
     pdf.output(laudo_path)
 
-    # Atualiza metadados com status final
     metadata_path = f"./uploads/{exam_id}/metadados.json"
     if os.path.exists(metadata_path):
         with open(metadata_path, "r") as f:
